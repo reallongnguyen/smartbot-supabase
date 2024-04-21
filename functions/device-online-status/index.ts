@@ -19,16 +19,18 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json();
 
-    if (!body || typeof body.payload !== 'string' || !body.topic) {
-      console.error('invalid body');
+    console.log(body);
 
-      throw new Error('invalid body');
+    const { clientid, event, username } = body;
+
+    if (!clientid.startsWith('bot-') && !clientid.startsWith('sensor-')) {
+      return new Response('ok', {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
     }
 
-    const { payload } = body;
-    const msg = JSON.parse(payload);
-
-    const { iotDeviceId } = msg;
+    const deviceId = username;
 
     // Create a Supabase client with the Auth context of the logged in user.
     const supabaseClient = createClient(
@@ -45,22 +47,21 @@ Deno.serve(async (req) => {
       }
     );
 
-    if (!Array.isArray(msg.measurements)) {
-      throw new Error('measurements must be an array');
-    }
+    switch (event) {
+      case 'client.disconnected':
+        await supabaseClient
+          .from('iot_devices')
+          .update({ connect_status: 'offline' })
+          .eq('id', deviceId);
 
-    const { error } = await supabaseClient
-      .from('sensors')
-      .update({
-        last_measurement_at: msg.timestamp,
-        measurements: msg.measurements,
-      })
-      .eq('id', iotDeviceId);
+        break;
+      case 'client.connected':
+        await supabaseClient
+          .from('iot_devices')
+          .update({ connect_status: 'online' })
+          .eq('id', deviceId);
 
-    if (error) {
-      console.error('update switch bot:', error);
-
-      throw error;
+        break;
     }
 
     return new Response('ok', {
@@ -82,7 +83,7 @@ Deno.serve(async (req) => {
   1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
   2. Make an HTTP request:
 
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/sensor-measurement' \
+  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/device-online-status' \
     --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0' \
     --header 'Content-Type: application/json' \
     --data '{"name":"Functions"}'

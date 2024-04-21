@@ -25,10 +25,7 @@ Deno.serve(async (req) => {
       throw new Error('invalid body');
     }
 
-    const { payload } = body;
-    const msg = JSON.parse(payload);
-
-    const { iotDeviceId } = msg;
+    const { payload: deviceId } = body;
 
     // Create a Supabase client with the Auth context of the logged in user.
     const supabaseClient = createClient(
@@ -45,23 +42,13 @@ Deno.serve(async (req) => {
       }
     );
 
-    if (!Array.isArray(msg.measurements)) {
-      throw new Error('measurements must be an array');
-    }
-
-    const { error } = await supabaseClient
-      .from('sensors')
-      .update({
-        last_measurement_at: msg.timestamp,
-        measurements: msg.measurements,
-      })
-      .eq('id', iotDeviceId);
-
-    if (error) {
-      console.error('update switch bot:', error);
-
-      throw error;
-    }
+    supabaseClient.functions.invoke('send-schedules-to-device', {
+      body: {
+        record: {
+          device_id: deviceId,
+        },
+      },
+    });
 
     return new Response('ok', {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -82,7 +69,7 @@ Deno.serve(async (req) => {
   1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
   2. Make an HTTP request:
 
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/sensor-measurement' \
+  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/send-setting-to-device' \
     --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0' \
     --header 'Content-Type: application/json' \
     --data '{"name":"Functions"}'
